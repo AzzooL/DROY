@@ -15,10 +15,23 @@ except ImportError:
 
 
 def decode_token(encoded: str) -> str:
-    try:
-        return base64.b64decode(encoded.encode()).decode()
-    except Exception:
+    """
+    يقبل التوكن سواء كان plain text أو base64.
+    توكنات Discord دائماً تحتوي نقطة (.) — نستخدمها للتمييز.
+    """
+    if not encoded:
         return encoded
+    # لو فيه نقطة → توكن مباشر (plain text)
+    if "." in encoded:
+        return encoded
+    # لو ما فيه نقطة → نجرب base64
+    try:
+        decoded = base64.b64decode(encoded.encode()).decode("utf-8")
+        if "." in decoded:
+            return decoded
+    except Exception:
+        pass
+    return encoded
 
 
 _raw_token            = os.getenv("TOKEN", "")
