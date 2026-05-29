@@ -3,16 +3,18 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select
 from discord import app_commands
+import asyncio
 
-# إعدادات البوت الأساسية
+# 1. إعداد الـ Intents (ضروري جداً لتجنب الخطأ الذي واجهته)
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True  # تفعيل قراءة الرسائل
+intents.members = True          # تفعيل صلاحية الأعضاء
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- كلاس القائمة المنسدلة ---
+# 2. كلاس القائمة المنسدلة (بدون descriptions كما طلبت)
 class TicketSelect(Select):
     def __init__(self):
-        # تم إزالة الـ description كما طلبت
         options = [
             discord.SelectOption(label="استفسار", value="inquiry"),
             discord.SelectOption(label="شراء منتج", value="purchase"),
@@ -20,7 +22,7 @@ class TicketSelect(Select):
         super().__init__(placeholder="أختر القائمة المناسبة لك", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        # إنشاء التذكرة
+        # إنشاء القناة
         channel = await interaction.guild.create_text_channel(
             name=f"ticket-{interaction.user.name}",
             overwrites={
@@ -30,31 +32,28 @@ class TicketSelect(Select):
             }
         )
         await interaction.response.send_message(f"تم فتح تذكرتك بنجاح: {channel.mention}", ephemeral=True)
-        await channel.send(f"أهلاً {interaction.user.mention}، اخترت: **{self.values[0]}**. يرجى انتظار رد طاقم العمل.")
+        await channel.send(f"أهلاً {interaction.user.mention}، لقد اخترت: **{self.values[0]}**. فريق الدعم سيصلك قريباً.")
 
 class TicketView(View):
     def __init__(self):
-        super().__init__(timeout=None) # timeout=None يمنع تعطل الأزرار بعد فترة
+        super().__init__(timeout=None) # يمنع توقف القائمة
         self.add_item(TicketSelect())
 
-# --- الأمر ---
+# 3. أمر فتح رسالة التذاكر
 @bot.tree.command(name="ticket", description="إرسال رسالة التذاكر")
 async def ticket(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="نظام التذاكر",
-        description="للطلب أو الاستفسار، يرجى فتح تذكرة عبر القائمة أدناه.",
-        color=discord.Color.brown()
+        title="تذكرة...",
+        description="للطلب أو الاستفسار أو الدعم الفني نرجو منك فتح تذكرة عبر النظام المخصص.\n\nعند فتح التذكرة، يرجى توضيح جميع التفاصيل.",
+        color=0x8B4513
     )
     await interaction.response.send_message(embed=embed, view=TicketView())
 
+# 4. تشغيل البوت
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    await bot.tree.sync() # مزامنة الأوامر
     print(f'البوت يعمل الآن: {bot.user}')
 
-# تشغيل البوت
 TOKEN = os.environ.get('DISCORD_TOKEN')
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("خطأ: لم يتم العثور على التوكن في متغيرات البيئة!")
+bot.run(TOKEN)
