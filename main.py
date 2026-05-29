@@ -1,21 +1,21 @@
 import os
 import discord
-import chat_exporter
 import asyncio
 from discord.ext import commands
 from discord.ui import View, Select
 
+# إعدادات البوت الأساسية
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# القنوات
+# المتغيرات
 LOG_CHANNEL_ID = 1508308536298311750
 OPEN_CHANNEL_ID = 1508308491788484648
 
-# دالة لقراءة وكتابة الرقم (لضمان استمرار الترقيم)
-def get_next_ticket_number():
+# دالة الترقيم (تنشئ ملف نصي لحفظ الرقم)
+def get_next_number():
     if not os.path.exists("counter.txt"):
         with open("counter.txt", "w") as f: f.write("18")
         return 18
@@ -34,51 +34,36 @@ class TicketSelect(Select):
         super().__init__(placeholder="أختر القائمة المناسبة لك", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        # تأجيل الرد لتجنب خطأ "Interaction failed"
+        # 1. نرد فوراً بـ defer لتجنب خطأ فشل التفاعل
         await interaction.response.defer(ephemeral=True)
         
-        num = get_next_ticket_number()
+        num = get_next_number()
+        guild = interaction.guild
         channel_name = f"ticket-{interaction.user.name}-{num}"
         
-        channel = await interaction.guild.create_text_channel(
+        # 2. إنشاء القناة
+        channel = await guild.create_text_channel(
             name=channel_name,
             overwrites={
-                interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
             }
         )
         
-        # الإشعار في قناة الفتح
-        open_channel = interaction.guild.get_channel(OPEN_CHANNEL_ID)
-        if open_channel:
-            await open_channel.send(f"تم فتح تذكرة جديدة بواسطة {interaction.user.mention}: {channel.mention}")
+        # 3. إرسال إشعار في قناة الإشعارات
+        notify_channel = guild.get_channel(OPEN_CHANNEL_ID)
+        if notify_channel:
+            await notify_channel.send(f"تم فتح تذكرة جديدة بواسطة {interaction.user.mention}: {channel.mention}")
 
         await interaction.followup.send(f"تم فتح تذكرتك: {channel.mention}", ephemeral=True)
         await channel.send(f"أهلاً {interaction.user.mention}، سيصلك الدعم قريباً.\nلإغلاق التذكرة اكتب: **!إغلاق**")
-
-@bot.command(name="إغلاق")
-async def close(ctx):
-    if not ctx.channel.name.startswith("ticket-"): return
-    
-    # تحذير: تأكد من وضع ID رتبة الإدارة الصحيح
-    admin_role_id = 1508308453615996938 
-    if not any(role.id == admin_role_id for role in ctx.author.roles):
-        return await ctx.send("لا تملك صلاحية الإغلاق.")
-
-    await ctx.send("يتم الحفظ والإغلاق...")
-    transcript = await chat_exporter.export(ctx.channel)
-    if transcript:
-        log_channel = bot.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            file = discord.File(transcript, filename=f"{ctx.channel.name}.html")
-            await log_channel.send(f"سجل تذكرة: {ctx.channel.name}", file=file)
-    await ctx.channel.delete()
 
 @bot.tree.command(name="ticket", description="إرسال رسالة التذاكر")
 async def ticket(interaction: discord.Interaction):
     view = View(timeout=None)
     view.add_item(TicketSelect())
+    # اللون الرصاصي 0x808080
     embed = discord.Embed(title="نظام التذاكر", description="للطلب أو الاستفسار، افتح تذكرة عبر القائمة.", color=0x808080)
     await interaction.response.send_message(embed=embed, view=view)
 
