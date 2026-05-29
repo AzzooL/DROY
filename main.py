@@ -1,6 +1,6 @@
 import os
 import discord
-import chat_exporter # تأكد من وجوده في requirements.txt
+import chat_exporter
 from discord.ext import commands
 from discord.ui import View, Select
 
@@ -9,7 +9,7 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# القنوات
+# المتغيرات
 LOG_CHANNEL_ID = 1508308536298311750
 OPEN_CHANNEL_ID = 1508308491788484648
 
@@ -24,15 +24,14 @@ def get_next_number():
 
 class TicketSelect(Select):
     def __init__(self):
-        super().__init__(placeholder="أختر القائمة المناسبة لك", options=[
+        options = [
             discord.SelectOption(label="استفسار", value="inquiry"),
             discord.SelectOption(label="شراء منتج", value="purchase"),
-        ], custom_id="ticket_menu")
+        ]
+        super().__init__(placeholder="أختر القائمة المناسبة لك", options=options, custom_id="ticket_menu")
 
     async def callback(self, interaction: discord.Interaction):
-        # رد فوري لمنع الخطأ
-        await interaction.response.send_message("⏳ جاري إنشاء التذكرة...", ephemeral=True)
-        
+        await interaction.response.send_message("جاري إنشاء التذكرة...", ephemeral=True)
         try:
             num = get_next_number()
             channel = await interaction.guild.create_text_channel(
@@ -46,7 +45,6 @@ class TicketSelect(Select):
             notify_channel = interaction.guild.get_channel(OPEN_CHANNEL_ID)
             if notify_channel:
                 await notify_channel.send(f"تم فتح تذكرة جديدة: {channel.mention}")
-
             await interaction.edit_original_response(content=f"✅ تم فتح تذكرتك: {channel.mention}")
             await channel.send(f"أهلاً {interaction.user.mention}، سيصلك الدعم قريباً.\nلإغلاق التذكرة اكتب: **!إغلاق**")
         except Exception as e:
@@ -60,6 +58,19 @@ class TicketView(View):
 @bot.command(name="إغلاق")
 async def close(ctx):
     if not ctx.channel.name.startswith("ticket-"): return
-    await ctx.send("⏳ جاري الحفظ والإغلاق...")
+    await ctx.send("⏳ جاري حفظ السجل وإغلاق التذكرة...")
     try:
-        transcript = await chat_exporter.export(
+        # هنا تم إغلاق القوس بشكل صحيح
+        transcript = await chat_exporter.export(ctx.channel)
+        if transcript:
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                file = discord.File(transcript, filename=f"{ctx.channel.name}.html")
+                await log_channel.send(f"📄 سجل تذكرة: {ctx.channel.name}", file=file)
+        await ctx.channel.delete()
+    except Exception as e:
+        await ctx.send(f"⚠️ خطأ أثناء الإغلاق: {e}")
+
+@bot.tree.command(name="ticket", description="إرسال رسالة التذاكر")
+async def ticket(interaction: discord.Interaction):
+    embed = discord.Embed(title
