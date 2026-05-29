@@ -1,34 +1,21 @@
 import os
 import discord
+import chat_exporter
 import asyncio
 from discord.ext import commands
 from discord.ui import View, Select
 
-# إعداد الصلاحيات (Intents)
+# إعداد الصلاحيات
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 1. كلاس زر الإغلاق (يظهر داخل التذكرة)
-class CloseButton(View):
-    def __init__(self):
-        super().__init__(timeout=None)
+# المتغيرات الخاصة بك
+LOG_CHANNEL_ID = 1508308536298311750 
+OPEN_CHANNEL_ID = 1508308491788484648 
+ticket_counter = 18 
 
-    @discord.ui.button(label="إغلاق التذكرة", style=discord.ButtonStyle.danger, custom_id="close_ticket")
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ضع ID رتبة الإدارة هنا
-        admin_role_id = 1508308453615996938
-        
-        is_admin = any(role.id == admin_role_id for role in interaction.user.roles)
-        if is_admin or interaction.user.id == interaction.channel.owner_id:
-            await interaction.response.send_message("سيتم إغلاق القناة وحذفها بعد 5 ثوانٍ...")
-            await asyncio.sleep(5)
-            await interaction.channel.delete()
-        else:
-            await interaction.response.send_message("عذراً، لا تملك صلاحية الإغلاق.", ephemeral=True)
-
-# 2. كلاس القائمة (التي تظهر في رسالة التذاكر)
 class TicketSelect(Select):
     def __init__(self):
         options = [
@@ -38,9 +25,11 @@ class TicketSelect(Select):
         super().__init__(placeholder="أختر القائمة المناسبة لك", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        # إنشاء قناة التذكرة
+        global ticket_counter
+        channel_name = f"ticket-{interaction.user.name}-{ticket_counter}"
+        
         channel = await interaction.guild.create_text_channel(
-            name=f"ticket-{interaction.user.name}",
+            name=channel_name,
             overwrites={
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
@@ -48,36 +37,48 @@ class TicketSelect(Select):
             }
         )
         
-        # الرسالة الترحيبية داخل التذكرة
-        embed = discord.Embed(
-            title="نظام التذاكر",
-            description=f"أهلاً {interaction.user.mention}، سيقوم فريق الدعم بمساعدتك بخصوص ({self.values[0]}) قريباً.\n\nللإغلاق اضغط على الزر أدناه.",
-            color=discord.Color.green()
-        )
-        
-        await channel.send(embed=embed, view=CloseButton())
+        open_channel = interaction.guild.get_channel(OPEN_CHANNEL_ID)
+        if open_channel:
+            await open_channel.send(f"تم فتح تذكرة جديدة بواسطة {interaction.user.mention}: {channel.mention}")
+
+        ticket_counter += 1
         await interaction.response.send_message(f"تم فتح تذكرتك: {channel.mention}", ephemeral=True)
+        await channel.send(f"أهلاً {interaction.user.mention}، سيصلك الدعم قريباً.\nلإغلاق التذكرة اكتب: **!إغلاق**")
 
-class TicketView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(TicketSelect())
+@bot.command(name="إغلاق")
+async def close(ctx):
+    if not ctx.channel.name.startswith("ticket-"):
+        return
+    
+    # تأكد من تغيير ID الرتبة هنا
+    admin_role_id = 1508308453615996938 
+    if not any(role.id == admin_role_id for role in ctx.author.roles):
+        return await ctx.send("لا تملك صلاحية الإغلاق.")
 
-# 3. أمر فتح رسالة التذاكر (Slash Command)
+    await ctx.send("يتم الآن حفظ السجل وإغلاق التذكرة...")
+    transcript = await chat_exporter.export(ctx.channel)
+    if transcript:
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            file = discord.File(transcript, filename=f"{ctx.channel.name}.html")
+            await log_channel.send(f"تم حفظ تذكرة: {ctx.channel.name}", file=file)
+    await ctx.channel.delete()
+
 @bot.tree.command(name="ticket", description="إرسال رسالة التذاكر")
 async def ticket(interaction: discord.Interaction):
-    # اجعلها عامة ليراها الجميع، لكنها رسالة واحدة فقط
+    view = View(timeout=None)
+    view.add_item(TicketSelect())
+    
+    # هنا تم تغيير اللون إلى الرصاصي (0x808080)
     embed = discord.Embed(
-        title="تذكرة...",
-        description="للطلب أو الاستفسار، نرجو منك فتح تذكرة عبر النظام المخصص حتى يتمكن فريق العمل من خدمتك.",
-        color=0x8B4513
+        title="نظام التذاكر", 
+        description="للطلب أو الاستفسار، نرجو منك فتح تذكرة عبر النظام المخصص حتى يتمكن فريق العمل من خدمتك.", 
+        color=0x808080
     )
-    await interaction.response.send_message(embed=embed, view=TicketView())
+    await interaction.response.send_message(embed=embed, view=view)
 
 @bot.event
 async def on_ready():
-    bot.add_view(CloseButton())
-    bot.add_view(TicketView())
     await bot.tree.sync()
     print(f'البوت جاهز: {bot.user}')
 
