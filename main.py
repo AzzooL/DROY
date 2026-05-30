@@ -660,4 +660,9 @@ async def stats_cmd(ctx: commands.Context) -> None:
 
 # ─── تشغيل البوت ─────────────────────────────────────────────────────────────
 
-bot.run(TOKEN)
+TOKEN = _decode_token(
+    os.getenv("TOKEN") or
+    os.getenv("DISCORD_TOKEN") or
+    os.getenv("BOT_TOKEN") or
+    ""
+)
